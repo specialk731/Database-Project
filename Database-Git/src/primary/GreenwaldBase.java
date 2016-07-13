@@ -2,7 +2,7 @@ package primary;
 
 import java.io.*;
 
-public class Main {
+public class GreenwaldBase {
 
 	public static void main(String[] args) {
 		
