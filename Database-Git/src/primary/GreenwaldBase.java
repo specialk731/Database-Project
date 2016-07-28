@@ -3,6 +3,8 @@ package primary;
 import java.io.*;
 
 public class GreenwaldBase {
+	
+	public static int PageSize = 512;
 
 	public static void main(String[] args) {
 		
