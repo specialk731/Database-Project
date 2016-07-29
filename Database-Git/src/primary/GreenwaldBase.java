@@ -120,7 +120,7 @@ public class GreenwaldBase {
 	public static void SHOW_TABLES()
 	{
 		System.out.println("GOT COMMAND SHOW TABLES");
-		SELECT_FROM_WHERE();
+		SELECT_FROM_WHERE("select * from greenwaldbase_tables;");
 	}
 	
 	public static void DROP_TABLE(String usrCom)
@@ -144,6 +144,8 @@ public class GreenwaldBase {
 		
 		for(int i = 0; i < columns.length; i++)
 			System.out.println(columns[i]);
+		
+		
 		
 		
 		
