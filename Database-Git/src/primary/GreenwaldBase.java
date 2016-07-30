@@ -7,6 +7,7 @@ public class GreenwaldBase {
 	
 	static Scanner scanner = new Scanner(System.in).useDelimiter(";");
 	static String prompt = "Greenwaldsql> ";
+	static long pageSize = 512; 
 
 	public static void main(String[] args) {
 		introScreen();
@@ -55,6 +56,8 @@ public class GreenwaldBase {
 	
 	public static void parseUserCommand (String userCommand)
 	{
+		try{
+			
 		String[] commandTokens = userCommand.split(" ");
 		
 		switch (commandTokens[0])
@@ -87,7 +90,7 @@ public class GreenwaldBase {
 			break;
 			
 		case "insert":
-			if (commandTokens.length == 6 && commandTokens[1].equals("into") && commandTokens[2].equals("table") && commandTokens[4].equals("values"))
+			if (commandTokens[1].equals("into") && commandTokens[2].equals("table") && commandTokens[4].equals("values"))
 			{
 				INSERT_INTO_TABLE(userCommand);
 			}
@@ -115,6 +118,12 @@ public class GreenwaldBase {
 			System.out.println("Got UKNOWN or INCOMPLETE command: " + userCommand);
 			break;
 		}
+		
+		}
+		catch(Exception e)
+		{
+			System.out.println("Got UKNOWN or INCOMPLETE command: " + userCommand);
+		}
 	}
 	
 	public static void SHOW_TABLES()
@@ -138,6 +147,8 @@ public class GreenwaldBase {
 		
 		String[] tmp = columns[0].split("\\(", 2);
 		
+		String table = usrCom.substring(13, usrCom.indexOf(" ", 13));
+				
 		columns[0]=tmp[1];
 		
 		columns[columns.length - 1] = columns[columns.length-1].replace(")", "");
@@ -145,6 +156,71 @@ public class GreenwaldBase {
 		for(int i = 0; i < columns.length; i++)
 			System.out.println(columns[i]);
 		
+		System.out.println("Table name: " + table);
+		
+		RandomAccessFile binaryFile;
+		
+		try {
+			binaryFile = new RandomAccessFile("data\\" + table + ".tbl", "rw");
+			
+			binaryFile.setLength(0);
+			binaryFile.setLength(pageSize);
+			binaryFile.seek(0);
+			binaryFile.writeByte(0x0D);
+			
+			binaryFile.close();
+			
+			File file = new File("data\\greenwaldbase_tables.tbl");
+			
+			if(file.isFile())
+			{
+				int rowid = 0, numcells = 0, i = 0;
+				short  pointer = 0;
+				boolean done = false;
+				binaryFile = new RandomAccessFile("data\\greenwaldbase_tables.tbl", "rw");
+				
+				// CANT BE DONE UNTIL INSERT IS FINISHED
+				while(!done);
+				{
+					binaryFile.seek(i * pageSize);
+					if(binaryFile.readByte() == 0x05)
+					{
+						;
+					}
+					else
+					{
+						numcells = binaryFile.readInt();
+						for(int k = 0; k < numcells; k++)
+							binaryFile.readShort();
+						
+						pointer = binaryFile.readShort();
+						binaryFile.seek(i + pageSize + pointer);
+						rowid = binaryFile.readInt();
+						done = true;
+					}
+				}
+				
+				INSERT_INTO_TABLE("INSERT INTO greenwaldbase_tables VALUES (" + rowid + "," + table +",0);"); // INSERT THE TABLE INTO greenwaldbase_tables
+			}
+			else
+			{
+				binaryFile = new RandomAccessFile("data\\greenwaldbase_tables.tbl", "rw");
+				binaryFile.setLength(0);
+				binaryFile.setLength(pageSize);
+				binaryFile.seek(0);
+				binaryFile.writeByte(0x0d);
+				
+				binaryFile.close();
+				
+				INSERT_INTO_TABLE("INSERT INTO greenwaldbase_tables VALUES (0," + table +",0);"); // INSERT THE TABLE INTO greenwaldbase_tables
+
+			}
+
+		}
+		catch(Exception e1)
+		{
+			System.out.println(e1);
+		}
 		
 		
 		
@@ -199,6 +275,12 @@ public class GreenwaldBase {
 	
 	public static void INSERT_INTO_TABLE(String usrCom)
 	{
+		String table = usrCom.substring(18, usrCom.indexOf(" ", 18));
+		
+		File file = new File("data\\" + table + ".tbl");
+		
+		if(file.isFile())
+		{
 		String[] values = usrCom.split(",");
 		
 		String[] tmp = values[0].split("\\(", 2);
@@ -207,11 +289,31 @@ public class GreenwaldBase {
 		
 		values[values.length - 1] = values[values.length-1].replace(")", "");
 		
-		for(int i = 0; i < values.length; i++)
+		int key = Integer.parseInt(values[0]);
+				
+		try{
+		RandomAccessFile binaryFile = new RandomAccessFile("data\\" + table + ".tbl", "rw");
+		
+		binaryFile.seek(0);
+		
+		
+		
+		}
+		catch(Exception e2)
+		{
+			System.out.println(e2);
+		}
+		}
+		else
+			System.out.println("The table: \"" + table + "\" could not be found.");
+		
+		
+		
+		/*for(int i = 0; i < values.length; i++)
 			System.out.println(values[i]);		
 		
 		
-		/*String[] values = null;
+		String[] values = null;
 		
 		System.out.println("Got command INSERT INTO TABLE " + comTok[3]);
 		System.out.println("Num Tokens: " + comTok.length);
@@ -236,6 +338,10 @@ public class GreenwaldBase {
 		
 	}
 	
+	public static String SELECT_FROM_WHERE_tostring(String usrCom)
+	{
+		return "";
+	}
 }
 
 
