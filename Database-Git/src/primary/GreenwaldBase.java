@@ -212,7 +212,7 @@ public class GreenwaldBase {
 				
 				binaryFile.close();
 				
-				INSERT_INTO_TABLE("INSERT INTO greenwaldbase_tables VALUES (0," + table +",0);"); // INSERT THE TABLE INTO greenwaldbase_tables
+				//INSERT_INTO_TABLE("INSERT INTO greenwaldbase_tables VALUES (0," + table +",0);"); // INSERT THE TABLE INTO greenwaldbase_tables
 
 			}
 
@@ -289,14 +289,61 @@ public class GreenwaldBase {
 		
 		values[values.length - 1] = values[values.length-1].replace(")", "");
 		
+		String[] types;
+		
+		types = SELECT_FROM_WHERE_tostringarray("SELECT DATA_TYPE FROM greenwaldbase_tables WHERE table_name=\"" + table + "\";");
+		
 		int key = Integer.parseInt(values[0]);
+		
+		short payload = 0;
+		
+		for(int i = 0; i < values.length ;i++)
+		{
+
+		}
 				
 		try{
+			
+		long pointer = 0, tmpPointer = 0, pagePointer = 0;
+		int tempKey = 0;
+			
 		RandomAccessFile binaryFile = new RandomAccessFile("data\\" + table + ".tbl", "rw");
 		
 		binaryFile.seek(0);
 		
-		
+		if(binaryFile.readByte() == 0x0d && binaryFile.readByte() == 0x00) //There is nothing inserted into the table at all
+		{
+			binaryFile.seek(0);						//Start at the beginning
+			binaryFile.readByte(); 					//Skip the info about page type
+			binaryFile.writeByte(1);				//Write that there is now 1 record on this page
+			pointer = pageSize - (payload + 6);		//Point to where the record will begin
+			binaryFile.writeShort((short)pointer);	//Write the address of the record start
+			binaryFile.seek(pointer);				//File looks at pointer
+			binaryFile.writeShort(payload);			//Write Size of Payload
+			binaryFile.writeInt(key);				//Write the Key
+			binaryFile.writeByte(values.length - 1);//Write Num cols not including key
+			
+			binaryFile.close();
+		}
+		else
+		{		
+			binaryFile.seek(0);
+			
+			if(binaryFile.readByte() == 0x05)
+			{
+				//Find the leaf it goes in
+				//Make pagePointer the address of the page start
+			}
+					
+			byte numRecords = binaryFile.readByte();
+			
+			
+			
+			
+			
+			binaryFile.close();
+			
+		}
 		
 		}
 		catch(Exception e2)
@@ -342,6 +389,34 @@ public class GreenwaldBase {
 	{
 		return "";
 	}
+	
+	public static String[] SELECT_FROM_WHERE_tostringarray(String usrCom)
+	{
+		String[] types;
+		String select, table, where;
+		
+		select = usrCom.substring(7, usrCom.indexOf(" ", 7));
+		
+		table = usrCom.substring(usrCom.indexOf(" ", usrCom.indexOf(" ", 8) + 1) + 1  ,    usrCom.indexOf(" ", usrCom.indexOf(" ", usrCom.indexOf(" ", 8) + 1) + 1));
+		
+		where = usrCom.substring(usrCom.lastIndexOf(" ") + 1	,	usrCom.length()-1);
+		
+		try
+		{
+			RandomAccessFile File = new RandomAccessFile(table + ".tbl","rw");
+			
+			
+			
+			
+		}catch (Exception e4)
+		{
+			System.out.println("Caught Exception in SELECT_FROM_WHERE_tostringarray Function:");
+			System.out.println(e4);
+		}
+		
+		return types;
+	}
+	
 }
 
 

@@ -33,15 +33,15 @@ public class DavisBaseDataExample {
 			binaryFile.writeShort(0x01BD); // offset address of record rowid=3
 			
 			binaryFile.seek(0x1E8);      // Offset address to begin writing record rowid=1
-			binaryFile.writeShort(18);    // Size of payload
+			binaryFile.writeShort(18);    // Size of payload = sum(1 + num_col + Size of each col)
 			binaryFile.writeInt(1);      // rowid=1 (is also column_1)
-			binaryFile.writeByte(3);     // number of columns in addition to rowid column_1
-			binaryFile.writeByte(5);     // column_2 data type byte SMALLINT 2-byte integer
-			binaryFile.writeByte(8);     // column_3 data type byte REAL 4-byte single precision float
-			binaryFile.writeByte(20);    // column_4 data type byte STRING 12B + 8 ASCII characters
-			binaryFile.writeShort(7482); // column_2 value
-			binaryFile.writeFloat(1.5F);  // column_3 value
-			binaryFile.writeBytes("New York");    // column_4 value
+			binaryFile.writeByte(3);     // number of columns in addition to rowid column_1	1
+			binaryFile.writeByte(5);     // column_2 data type byte SMALLINT 2-byte integer	1
+			binaryFile.writeByte(8);     // column_3 data type byte REAL 4-byte single precision float	1
+			binaryFile.writeByte(20);    // column_4 data type byte STRING 12B + 8 ASCII characters	1
+			binaryFile.writeShort(7482); // column_2 value	2
+			binaryFile.writeFloat(1.5F);  // column_3 value	4
+			binaryFile.writeBytes("New York");    // column_4 value	8
 
 			binaryFile.seek(0x1D2);      // Offset address to begin writing record rowid=1
 			binaryFile.writeShort(15);    // Size of payload
