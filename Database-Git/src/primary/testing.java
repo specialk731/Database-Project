@@ -14,7 +14,7 @@ public class testing {
 
 	public static void main(String[] args) {
 		
-		String usrCom = "SELECT rowid fROM greenwaldbase_columns WHERE data_type = \"INT\";";
+		String usrCom = "SELECT rowid fROM greenwaldbase_columns;";
 		
 		usrCom = usrCom.replace(";", "");
 		
@@ -61,6 +61,9 @@ public class testing {
 				
 				for(int i = 0; i < select.length; i++)
 					ordinals[i] = GETORDINALITY(table, select[i]);
+				
+				if(!contains(ordinals, -1))
+				{
 				
 				RandomAccessFile File = new RandomAccessFile("data\\" + table + ".tbl","rw");
 				
@@ -156,6 +159,9 @@ public class testing {
 					}while(pointer2 != 0);
 					
 				}
+				}
+				else
+					System.out.println("Given Column missing from table");
 				
 				
 			}catch (Exception e4)
@@ -210,7 +216,7 @@ public class testing {
 			arraypointer = (File.getFilePointer());
 			pointer = (pagepointer*pageSize) + File.readShort();		//get address of first record
 					
-			for(int i = 0; i < numcells-1; i++)
+			for(int i = 0; i < numcells; i++)
 			{				
 				tmptable = "";
 				tmpcol = "";
