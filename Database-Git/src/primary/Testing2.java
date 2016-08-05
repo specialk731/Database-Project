@@ -1,5 +1,6 @@
 package primary;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.text.SimpleDateFormat;
@@ -8,23 +9,208 @@ import java.util.Date;
 import java.util.concurrent.TimeUnit;
 
 public class Testing2 {
+	
+	public static int pageSize = 512;
+	public static int columns_rowid = 8;
 
 	public static void main(String[] args) {
-		
-		try{
-			RandomAccessFile file = new RandomAccessFile("data\\greenwaldbase_columns.tbl","rw");
+		try{			
 			
-			int[] test = {1,6};
-			DISPLAYRECORD(file,DISPLAYRECORD(file,0x33,test), test);
+			RandomAccessFile File = new RandomAccessFile("data\\greenwaldbase_columns.tbl", "rw");
+						
 			
-			file.close();
-		}
-		catch(Exception e)
+		}catch(Exception e)
 		{
-			System.out.println(e);
 			e.printStackTrace();
 		}
+	}
+	
+	public static long FINDPREVIOUSPAGE(RandomAccessFile file, long pointer) throws IOException
+	{
+		long pointer2 = 0, pointer3 = 0;
+		
+		pointer2 = FINDLEFTMOSTPAGE(file,0);
+								
+		file.seek(pointer2 + pageSize - 1);
+		pointer3 = file.readByte() * pageSize;
+				
+		while(pointer3 != pointer && pointer3 != 0)
+		{
+			pointer2 = pointer3;
+			file.seek(pointer2 + pageSize -1);
+			pointer3 = file.readByte() * pageSize;
+		}
+		
+		return pointer2;
+	}
+	
+	public static long FINDLEFTMOSTPAGE(RandomAccessFile file, long pos) throws IOException //returns the #bytes offset from beginning of file of the leftmost page
+	{
+		file.seek(pos);
+						
+		if(file.readByte() == 0x0D)
+			return pos;
+		else
+		{
+			file.readByte();
+			file.readShort();
+			file.readInt();
+			file.seek(file.readShort() + pos);
+			long tmplong = file.readInt() * pageSize;
+			
+			return 	FINDLEFTMOSTPAGE(file,tmplong);
 
+		}
+	}
+	
+	public static String GETDATATYPE(String table, int ord) throws IOException //WORKS! returns the cardinality of the colname in table
+	{
+		RandomAccessFile File = new RandomAccessFile("data\\greenwaldbase_columns.tbl", "r");
+		
+		byte tmpByte = 0;
+		int pagepointer = 0, numcells, pointer, tmpInt = 0;
+		
+		String tmptable = "", tmpString = "";
+		
+		long leftmost = FINDLEFTMOSTPAGE(File, 0), arraypointer;
+		
+		pagepointer = (int) (leftmost/pageSize);
+				
+		do
+		{
+			File.seek(pagepointer * pageSize);
+			File.readByte();						//throw away the page type
+			numcells = File.readByte();				//get num cells
+			File.readShort();						//Jump over start of data address
+			arraypointer = (File.getFilePointer());
+			pointer = (int) ((pagepointer*pageSize) + File.readShort());		//get address of first record
+					
+			for(int i = 0; i < numcells; i++)
+			{				
+				tmptable = "";
+				tmpInt = 0;
+				
+				File.seek(pointer);
+
+				File.readShort();	//Skip over payload
+				File.readInt();		//Skip over rowid
+				File.readByte();	//Skip over num cols
+				File.readByte();	//Skip over datatype for tablename
+				File.readByte();	//Skip over datatype for colname
+				File.readByte();	//Skip over datatype for datatype
+				File.readByte();	//Skip over datatype for ordpos
+				File.readByte();	//Skip over datatype for isnull
+								
+				tmptable = File.readUTF();	//Get the table string
+				File.readUTF();				//Skip the column_name
+				tmpString = File.readUTF();	//Get data_type
+				tmpByte = File.readByte();	//Get the ordinal position
+												
+				if(tmptable.equals(table) && tmpByte == ord)				//If its the correct table
+				{
+					return tmpString;
+				}
+
+				File.seek(arraypointer + 2);	//find next address on list
+				arraypointer = File.getFilePointer();
+				pointer = (int) ((pagepointer*pageSize) + File.readShort());				//get address
+				
+			}
+			
+			File.seek(pagepointer * pageSize - 1 + pageSize);		//Find next page in the line
+			
+			pagepointer = File.readByte();				//store that page
+							
+		}
+		while (pagepointer != 0);
+		
+		return "ERROR";
+	}
+	
+	public static long FINDKEYPAGE(RandomAccessFile File, int key, long pointer) throws IOException
+	{
+		File.seek(pointer);
+		
+		if(File.readByte() == 0x0D)
+			return pointer;
+		else
+		{
+			int tmpInt, page;
+
+			File.readByte();
+			File.readShort();
+			page = File.readInt();
+			File.seek(pointer + pageSize - 4);
+			tmpInt = File.readInt();
+			
+			if(key <= tmpInt)		//The key is in the rightmost page if it exists
+			{
+				File.seek(pointer + 8);					//go to offset of storage of offset of first cell
+				File.seek(File.readShort() + pointer);	//
+				
+				do{
+					page = File.readInt();
+					tmpInt = File.readInt();
+				
+				}while(key > tmpInt);
+				
+			}
+			
+			pointer = page * pageSize;
+			
+			return FINDKEYPAGE(File, key, pointer);
+		
+		}
+	}
+	
+	public static String[] GETCOLS(String table) throws IOException
+	{
+		String[] ret;
+		String tmpString = "";
+		long pointer = 0, leftmost = 0;
+		byte pointer2 = 0;
+		int numcells = 0, cellsize = 0;
+		
+		table = table.toLowerCase();
+		
+		RandomAccessFile File = new RandomAccessFile ("data\\greenwaldbase_columns.tbl" , "r");
+		
+		leftmost = FINDLEFTMOSTPAGE(File, 0);		//Find the leftmost page address
+		
+		pointer2 = (byte) (leftmost/pageSize);		// pointer2 is leftmost page #
+
+		do
+		{
+		File.seek(pointer2 * pageSize);				//seek to the address of the leftmost page #
+			
+		File.readByte();		//throw away page type
+		
+		numcells = File.readByte();		//Get num cells on this page
+		pointer = pageSize*pointer2 + File.readShort();		// pointer is now the address of the first cell on the page
+		
+		for(int i = 0; i < numcells; i++)	//for each cell on page
+		{
+			File.seek(pointer);					//seek to the start of the cell
+			cellsize = File.readShort() + 6;	//get the total size of the cell
+			File.seek(pointer + 12);			//seek to the start of info in the cell
+			pointer = pointer + cellsize;		//move the pointer to the next cell
+			if(File.readUTF().toLowerCase().equals(table))		//read a string from the file. if it equals the table name
+				tmpString = tmpString + File.readUTF() + ",";	//add the col name of the cell to tmpString + a comma		
+		}
+		
+		
+		
+		pointer2 = File.readByte();
+		}while(pointer2 != 0);
+		
+		tmpString = tmpString.substring(0, tmpString.length()-1);
+		
+		ret = tmpString.split(",");
+		
+		for(int i = 0; i < ret.length; i++)
+			ret[i]=ret[i].trim();	
+		
+		return ret;
 	}
 	
 	public static long DISPLAYRECORD(RandomAccessFile file, long pointer, int[] ordinals) throws IOException
@@ -156,6 +342,192 @@ public class Testing2 {
 		return pointer;
 	}
 	
+	public static long DISPLAYRECORDWHEREEQUAL(RandomAccessFile file, long pointer, int[] ordinals, int ord, String where) throws IOException
+	{
+		boolean whereistrue = false;
+		int key;
+		byte numcol_available;
+		byte[] types;
+		long tmp;
+		SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'_'HH:mm:ss");
+		SimpleDateFormat sdf2 = new SimpleDateFormat("yyyy-MM-dd");
+		Date d;
+		
+		where = where.replace("\"", "");
+		
+		Arrays.sort(ordinals);
+		
+		String print = "", tmpstring = "";
+		
+		file.seek(pointer);						//Go to start of record
+		short payload = file.readShort();		//Store payload
+		if(ord == 1)							//if where is on rowid
+		{
+			key = file.readInt();				//Get the rowid
+			if(key == Integer.parseInt(where))	//check it against the key we got
+				whereistrue = true;				//we found the right record
+		}
+		else
+		{
+			file.readInt();						//throw the row id away
+			numcol_available = file.readByte();	//get num cols
+			types = new byte[numcol_available];	
+			
+			for(int i = 0; i < numcol_available; i++)	//Get all the data types
+				types[i] = file.readByte();
+			
+			file.seek(pointer + 7 + numcol_available);	//move to the first data entry
+			
+			loop:
+			for(int j = 0; j < numcol_available; j++)	
+			{
+				switch(types[j])
+				{
+				case 0:		//1 byte Null
+					file.readByte();
+					if(ord == j+2 && where.toLowerCase().equals("\"null\""))
+					{
+						whereistrue = true;
+						break loop;
+					}
+					break;
+				case 1:		//2 byte Null
+					file.readShort();
+					if(ord == j+2 && where.toLowerCase().equals("\"null\""))
+					{
+						whereistrue = true;
+						break loop;
+					}					
+					break;
+				case 2:		//4 byte Null
+					file.readInt();
+					if(ord == j+2 && where.toLowerCase().equals("\"null\""))
+					{
+						whereistrue = true;
+						break loop;
+					}
+					break;
+				case 3:		//8 byte Null
+					file.readLong();
+					if(ord == j+2 && where.toLowerCase().equals("\"null\""))
+					{
+						whereistrue = true;
+						break loop;
+					}
+					break;
+				case 4:
+					if(ord == j+2)
+						if(Byte.parseByte(where) == file.readByte())
+						{
+							whereistrue = true;
+							break loop;
+						}
+						else;
+					else
+						file.readByte();
+					break;
+				case 5:
+					if(ord == j+2)
+						if(Short.parseShort(where) == file.readShort())
+						{
+							whereistrue = true;
+							break loop;
+						}
+						else;
+					else
+						file.readShort();
+					break;
+				case 6:
+					if(ord == j+2)
+						if(Integer.parseInt(where) == file.readInt())
+						{
+							whereistrue = true;
+							break loop;
+						}
+						else;
+					else
+						file.readInt();
+					break;
+				case 7:
+					if(ord == j+2)
+						if(Long.parseLong(where) == file.readLong())
+						{
+							whereistrue = true;
+							break loop;
+						}
+						else;
+					else
+						file.readLong();
+					break;
+				case 8:
+					if(ord == j+2)
+						if(Float.parseFloat(where) == file.readFloat())
+						{
+							whereistrue = true;
+							break loop;
+						}
+						else;
+					else
+						file.readFloat();
+					break;
+				case 9:
+					if(ord == j+2)
+						if(Double.parseDouble(where) == file.readDouble())
+						{
+							whereistrue = true;
+							break loop;
+						}
+						else;
+					else
+						file.readDouble();
+					break;
+				case 10:
+					tmp = file.readLong();
+					if(ord == j+2)
+					{
+						d = new Date(TimeUnit.SECONDS.toMillis(tmp));				
+						if(where.equals(sdf.format(d)))
+						{
+							whereistrue = true;
+							break loop;
+						}
+					}
+					break;
+				case 11:
+					tmp = file.readLong();
+					if(ord == j+2)
+					{
+						d = new Date(TimeUnit.SECONDS.toMillis(tmp));				
+						if(where.equals(sdf2.format(d)))
+						{
+							whereistrue = true;
+							break loop;
+						}
+					}
+					break;
+				default:
+					tmpstring = file.readUTF();
+					if(ord == j+2 && where.equals(tmpstring))
+					{
+						whereistrue = true;
+						break loop;
+					}
+					break;
+					
+				}
+			}
+			
+			
+		}
+		
+		if(whereistrue)
+			DISPLAYRECORD(file, pointer, ordinals);
+		
+		pointer = pointer + 6 + payload;
+		
+		return pointer;
+	}
+	
 	public static boolean contains(int[] array, int num)
 	{
 		for(int i = 0; i < array.length; i++)
@@ -163,6 +535,72 @@ public class Testing2 {
 				return true;
 		
 		return false;
+	}
+	
+	public static int GETORDINALITY(String table, String colname) throws IOException //WORKS! returns the cardinality of the colname in table
+	{
+		RandomAccessFile File = new RandomAccessFile("data\\greenwaldbase_columns.tbl", "r");
+		
+		int pagepointer = 0, numcells, pointer;
+		
+		String tmpcol = "", tmptable = "";
+		
+		long leftmost = FINDLEFTMOSTPAGE(File, 0), arraypointer;
+		
+		pagepointer = (int) (leftmost/pageSize);
+				
+		do
+		{
+			File.seek(pagepointer * pageSize);
+			File.readByte();						//throw away the page type
+			numcells = File.readByte();				//get num cells
+			File.readShort();						//Jump over start of data address
+			arraypointer = (File.getFilePointer());
+			pointer = (pagepointer*pageSize) + File.readShort();		//get address of first record
+					
+			for(int i = 0; i < numcells; i++)
+			{				
+				tmptable = "";
+				tmpcol = "";
+				
+				File.seek(pointer);
+				//System.out.println(pointer);
+
+				File.readShort();		//Skip over payload
+				File.readInt();			//Skip over rowid
+				File.readByte();		//Skip over num cols
+				File.readByte();		//Skip over datatype for tablename
+				File.readByte();		//Skip over datatype for colname
+				File.readByte();		//Skip over datatype for datatype
+				File.readByte();		//Skip over datatype for ordpos
+				File.readByte();		//Skip over datatype for isnull
+								
+				tmptable = File.readUTF();	//Get the table string
+												
+				if(tmptable.equals(table))				//If its the correct table
+				{
+					tmpcol = File.readUTF();			//Get the col
+						if(tmpcol.equals(colname))		//If its the right col
+						{
+							File.readUTF();				//skip the data type
+							return File.readByte();		//return the ordinal position
+						}
+				}
+
+				File.seek(arraypointer + 2);	//find next address on list
+				arraypointer = File.getFilePointer();
+				pointer = (pagepointer*pageSize) + File.readShort();				//get address
+				
+			}
+			
+			File.seek(pagepointer * pageSize - 1 + pageSize);		//Find next page in the line
+			
+			pagepointer = File.readByte();				//store that page
+							
+		}
+		while (!tmpcol.equals(colname) && pagepointer != 0);
+		
+		return -1;
 	}
 
 }
