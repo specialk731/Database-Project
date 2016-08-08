@@ -81,8 +81,6 @@ public class GreenwaldBase {
 			f.seek(tmpLong + tmpShort + 2);
 			columns_rowid = f.readInt();
 			f.close();
-			
-			System.out.println(columns_rowid);
 		}
 		
 		
@@ -148,7 +146,7 @@ public class GreenwaldBase {
 			break;
 			
 		case "insert":
-			if (commandTokens[1].equals("into") && commandTokens[2].equals("table") && commandTokens[4].equals("values"))
+			if (commandTokens[1].equals("into") && commandTokens[2].equals("table")/* && commandTokens[4].equals("values")*/)
 			{
 				INSERT_INTO_TABLE(userCommand);
 			}
@@ -157,8 +155,7 @@ public class GreenwaldBase {
 			break;
 			
 		case "update":
-			if (commandTokens[2].equals("where"))
-					UPDATE(userCommand);
+			UPDATE(userCommand);
 			break;
 			
 		case "select":
@@ -214,7 +211,7 @@ public class GreenwaldBase {
 	
 	public static void CREATE_TABLE(String usrCom)
 	{		
-		String table = usrCom.substring(13, usrCom.indexOf(" ", 13));
+		String table = usrCom.substring(13, usrCom.indexOf("(", 13)).trim();
 		
 		File f = new File(table + ".tbl");
 		
@@ -232,10 +229,8 @@ public class GreenwaldBase {
 			columns[columns.length - 1] = columns[columns.length-1].replace(")", "");
 			
 			for(int i = 0; i < columns.length; i++)
-				System.out.println(columns[i] = columns[i].trim());
-			
-			System.out.println("Table name: " + table);
-			
+				columns[i] = columns[i].trim();
+						
 			RandomAccessFile binaryFile;
 			
 			try {
@@ -245,6 +240,8 @@ public class GreenwaldBase {
 				binaryFile.setLength(pageSize);
 				binaryFile.seek(0);
 				binaryFile.writeByte(0x0D);
+				binaryFile.readByte();
+				binaryFile.writeShort((int) (pageSize - 1));
 				
 				binaryFile.close();
 				
@@ -296,105 +293,1039 @@ public class GreenwaldBase {
 			System.out.println("The table " + table + " already exists");
 	}
 	
-	public static void INSERT_INTO_TABLE(String usrCom) //Values can't have strings with , in them... at all...
+	public static void INSERT_INTO_TABLE(String usrCom)
 	{
-		
 		System.out.println(usrCom);
-		/*String table = usrCom.substring(18, usrCom.indexOf(" ", 18));
 		
-		File file = new File("data\\" + table + ".tbl");
-		
-		if(file.isFile())
-		{
-		String[] values = usrCom.split(",");
-		
-		String[] tmp = values[0].split("\\(", 2);
-		
-		values[0]=tmp[1];
-		
-		values[values.length - 1] = values[values.length-1].replace(");", "");
-		
-		for(int i = 0; i < values.length; i++)
-			values[i] = values[i].trim();
-						
-		int key = Integer.parseInt(values[0]);
-		
-		String type = SELECT_FROM_WHERE_tostring("SELECT DATA_TYPE FROM greenwaldbase_tables WHERE table_name=\"" + table + "\";");
-		
-		short payload = 0;
-		
-		for(int i = 0; i < values.length ;i++)
-		{
-
-		}
-				
 		try{
 			
-		long pointer = 0, tmpPointer = 0, pagePointer = 0;
-		int tempKey = 0;
-			
-		RandomAccessFile binaryFile = new RandomAccessFile("data\\" + table + ".tbl", "rw");
-		
-		binaryFile.seek(0);
-		
-		if(binaryFile.readByte() == 0x0d && binaryFile.readByte() == 0x00) //There is nothing inserted into the table at all
-		{
-			binaryFile.seek(0);						//Start at the beginning
-			binaryFile.readByte(); 					//Skip the info about page type
-			binaryFile.writeByte(1);				//Write that there is now 1 record on this page
-			pointer = pageSize - (payload + 6);		//Point to where the record will begin
-			binaryFile.writeShort((short)pointer);	//Write the address of the record start
-			binaryFile.seek(pointer);				//File looks at pointer
-			binaryFile.writeShort(payload);			//Write Size of Payload
-			binaryFile.writeInt(key);				//Write the Key
-			binaryFile.writeByte(values.length - 1);//Write Num cols not including key
-			
-			binaryFile.close();
-		}
-		else
-		{		
-			binaryFile.seek(0);
-			
-			if(binaryFile.readByte() == 0x05)
-			{
-				//Find the leaf it goes in
-				//Make pagePointer the address of the page start
-			}
+			String table = usrCom.substring(18, usrCom.indexOf(" ", 18));
 					
-			byte numRecords = binaryFile.readByte();
+			File file = new File("data\\" + table + ".tbl");
+			
+			usrCom = usrCom.replaceFirst("(?i)values(?-i)", "VALUES").replace(")", "");
+			
+			String[] tmp2 = usrCom.split("VALUES");
+					
+			if(file.isFile())
+			{
+			tmp2[1] = tmp2[1].replace("(", "").replace(");","");
+			String[] tmp = tmp2[1].split(",");
+			for(int i = tmp.length; i < GETNUMCOLUMNS(table); i++)
+				tmp2[1] = tmp2[1] + ",NULL"; 
+				
+			String[] values = tmp2[1].split(",");
+			
+			for(int i = 0; i < values.length; i++)
+			{
+				values[i] = values[i].trim().replace("\"", "");
+				if(values[i].toLowerCase().contains("null"))
+					values[i] = "NULL";
+			}
+							
+			int key = Integer.parseInt(values[0]);
+			
+			if(KEYEXISTS(table,key))
+			{
+				System.out.println("Duplicate Key Error");
+				return;
+			}
+			
+			//String type = SELECT_FROM_WHERE_tostring("SELECT DATA_TYPE FROM greenwaldbase_tables WHERE table_name=\"" + table + "\";");
+				
+				for(int i = 0; i < values.length;i++)
+					if(!ISNULLABLE(table,(i+1)) && values[i].equals("NULL"))
+					{
+						System.out.println("ERROR: NULL values in a non nullable column");
+						return;
+					}
+			
+			short payload = 1;	//Every record has 1 in payload for num cols
+			
+			String[] datatypes = new String [values.length];
+			//byte[] databytes = new byte [values.length];
+			
+			for(int i = 0; i < values.length ;i++)		//determine the datatypes
+			{
+				datatypes[i] = GETDATATYPE(table,i+1);
+				
+			}
+			
+			for(int i = 1; i < values.length; i++)	//determine the size of the payload
+				{
+					payload++;
+					switch(datatypes[i])
+					{
+					case "TINYINT":
+						payload += 1;
+						break;
+					case "SMALLINT":
+						payload += 2;
+						break;
+					case "INT":
+						payload += 4;
+						break;
+					case "BIGINT":
+						payload += 8;
+						break;
+					case "REAL":
+						payload += 4;
+						break;
+					case "DOUBLE":
+						payload += 8;
+						break;
+					case "DATETIME":
+						payload += 8;
+						break;
+					case "DATE":
+						payload += 8;
+						break;
+						default:
+							payload += 2 + values[i].length();
+							break;
+					}
+				}
+			
+			if(payload + 11 > pageSize)
+			{
+				System.out.println("This record is to large for the Page Size.");
+				return;
+			}
+				
+			long pointer = 0, pagePointer = 0, arraypointer = 0;
+			int tempKey = 0, numcells = 0;
+			short tmparray = 0, tmparray2 = 0, startPointer = 0;
+				
+			RandomAccessFile f = new RandomAccessFile("data\\" + table + ".tbl", "rw");
+			
+			pagePointer = FINDKEYPAGE(f,key,0);		//Find the page the record should go on		
+			f.seek(pagePointer);					//Seek to that page		
+			f.readByte();							//throw away page type		
+			numcells = f.readByte();				//get numcells
+			pointer = f.readShort();				//get offset of start of content
+						
+			for(int i = 0; i < numcells; i++)		//Skip to the start of free space after address array
+				f.readShort();
+			
+			System.out.println("pointer: " + pointer + " pagePointer: "+ pagePointer + " filepointer: " + f.getFilePointer() + " payload: " + payload);
+					
+			while((pointer + pagePointer) - f.getFilePointer() < payload + 8)	//While there is NOT enough space to insert into this page
+			{
+				LEAFSPLIT(f,pagePointer);										//Split the page
+				pagePointer = FINDKEYPAGE(f,key,0);								//Find the new page the record should go on		
+				f.seek(pagePointer);											//Seek to that page
+				f.readByte();													//throw away page type
+				numcells = f.readByte();										//get numcells
+				pointer = f.readShort();										//get offset of start of content
+				
+				for(int i = 0; i < numcells; i++)								//Skip to the start of free space after address array
+					f.readShort();
+			}							
+			
+			pagePointer = FINDKEYPAGE(f,key,0);
+			
+			f.seek(pagePointer);								//Go to the page where the record will be inserted
+			f.readByte();										//throw away page type
+			numcells = f.readByte();							//get numcells
+			f.seek(f.getFilePointer() - 1);
+			f.writeByte(++numcells);							//update numcells
+			pointer = f.readShort();							//get address of start of offset
+			startPointer = (short) ((pointer) - (payload + 6));	//offset of the start of the record is the offset of the first record minus (payload + 6)
+			f.seek(f.getFilePointer() - 2);
+			f.writeShort((int) (pointer - (payload + 6)));
+			arraypointer = f.getFilePointer();					//where we are in the address array
+			tmparray2 = startPointer;
 			
 			
+			for(int i = 0; i < numcells + 1; i++)
+			{
+				tmparray = f.readShort();							//address of smallest record
+				f.seek(pagePointer + tmparray);						//seek to the page number times page size + offset of the smallest record
+				f.readShort();										//throw away the payload
+				tempKey = f.readInt();								//tempKey is now the smallest key on the page
+				if(key < tempKey)
+					{
+						f.seek(arraypointer);
+						f.writeShort(tmparray2);
+						tmparray2 = tmparray;
+						arraypointer += 2;
+						f.seek(arraypointer);
+					}
+					
+				else
+				{
+					arraypointer += 2;
+					f.seek(arraypointer);
+				}
+					
+			}
+			
+			f.seek(pagePointer + startPointer);
+			System.out.println("startpointer: "+startPointer+" pagePointer: " + pagePointer);
+			f.writeShort(payload);
+			f.writeInt(key);
+			f.writeByte(values.length - 1);
+			
+			for(int i = 1; i < values.length; i++)
+			{
+				switch(datatypes[i])
+				{
+				case "TINYINT":
+					if(values[i].equals("NULL"))
+						f.writeByte(0x00);
+					else
+						f.writeByte(0x04);
+					break;
+				case "SMALLINT":
+					if(values[i].equals("NULL"))
+						f.writeByte(0x01);
+					else
+						f.writeByte(0x05);
+					break;
+				case "INT":
+					if(values[i].equals("NULL"))
+						f.writeByte(0x02);
+					else
+						f.writeByte(0x06);
+					break;
+				case "BIGINT":
+					if(values[i].equals("NULL"))
+						f.writeByte(0x03);
+					else
+						f.writeByte(0x07);
+					break;
+				case "REAL":
+					if(values[i].equals("NULL"))
+						f.writeByte(0x02);
+					else
+						f.writeByte(0x08);
+					break;
+				case "DOUBLE":
+					if(values[i].equals("NULL"))
+						f.writeByte(0x03);
+					else
+						f.writeByte(0x09);
+					break;
+				case "DATETIME":
+					if(values[i].equals("NULL"))
+						f.writeByte(0x03);
+					else
+						f.writeByte(0x0A);
+					break;
+				case "DATE":
+					if(values[i].equals("NULL"))
+						f.writeByte(0x03);
+					else
+						f.writeByte(0x0B);
+					break;
+					default:
+						if(values[i].equals("NULL"))
+							f.writeByte(0x0C + 0x04);
+						else
+							f.writeByte(0x0C + values[i].length());
+						break;
+				}
+			}
+			
+			f.seek(startPointer + 6 + values.length);	//Seek to the start of the record plus the distance to the first data storage
+			
+			SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'_'HH:mm:ss");
+			SimpleDateFormat sdf2 = new SimpleDateFormat("yyyy-MM-dd");
+			Date d;
+			
+			for(int i = 1; i < values.length; i++)
+			{
+				switch(datatypes[i])
+				{
+				case "TINYINT":
+					if(values[i].equals("NULL"))
+						f.writeByte(0);
+					else
+						f.writeByte(Byte.parseByte(values[i]));
+					break;
+				case "SMALLINT":
+					if(values[i].equals("NULL"))
+						f.writeShort(0);
+					else
+						f.writeShort(Short.parseShort(values[i]));
+					break;
+				case "INT":
+					if(values[i].equals("NULL"))
+						f.writeInt(0);
+					else
+						f.writeInt(Integer.parseInt(values[i]));
+					break;
+				case "BIGINT":
+					if(values[i].equals("NULL"))
+						f.writeLong(0);
+					else
+						f.writeLong(Long.parseLong(values[i]));
+					break;
+				case "REAL":
+					if(values[i].equals("NULL"))
+						f.writeFloat(0);
+					else
+						f.writeFloat(Float.parseFloat(values[i]));
+					break;
+				case "DOUBLE":
+					if(values[i].equals("NULL"))
+						f.writeDouble(0);
+					else
+						f.writeDouble(Double.parseDouble(values[i]));
+					break;
+				case "DATETIME":
+					if(values[i].equals("NULL"))
+						f.writeLong(0);
+					else
+					{
+						d = new Date();
+						d = sdf.parse(values[i]);
+						f.writeLong(d.getTime());
+					}
+					break;
+				case "DATE":
+					if(values[i].equals("NULL"))
+						f.writeLong(0);
+					else
+					{
+						d = new Date();
+						d = sdf2.parse(values[i]);
+						f.writeLong(d.getTime());
+					}				break;
+					default:
+						if(values[i].equals("NULL"))
+							f.writeUTF("NULL");
+						else
+						{
+							System.out.println("INSERT STRING: " + values[i].replace(";", ""));
+							f.writeUTF(values[i].replace(";", ""));
+						}
+						break;
+				}
+			}
+
+			
+			f.close();
 			
 			
-			
-			binaryFile.close();
-			
+			}
+			else
+				System.out.println("The table: \"" + table + "\" could not be found.");
+			}
+			catch(Exception e2)
+			{
+				e2.printStackTrace();		
+			}		
+	}
+	
+	public static void LEAFSPLIT(RandomAccessFile file, long page0) throws IOException	//Give file and pointer to leaf you want split	
+	{																						//KEEP THE LIST CHAIN GOING HERE
+		byte		numcells = 0, numcells1 = 0, numcells2 = 0, nextinlist;
+		byte[][]	records1, records2;
+		short		startoffset1 = (short) pageSize, startoffset2 = (short) pageSize;
+		short[]		arraylist1, arraylist2;
+		int			splitkey = 0;
+		long		arraypointer = 0, parentPointer = 0, page1 = 0, arraypointer1 = 0, arraypointer2 = 0;
+		
+		file.seek(page0);									//seek to start of leaf to split
+		file.readByte();									//skip page type
+		numcells = file.readByte();							//get num cells on the page
+		numcells1 = (byte) Math.ceil((float)numcells/2);	//numcells in the first page is the larger of the two if not div by 2
+		numcells2 = (byte) (numcells/2);					//numcells in second page is the smaller of the two
+		file.readShort();						//get offset of start of content
+		arraypointer = file.getFilePointer();				//get address of array start
+		
+		parentPointer = FINDPARENT(file, file.readInt(), 0);
+				
+		records1 = new byte[numcells1][];
+		records2 = new byte[numcells2][];
+		
+		arraylist1 = new short[numcells1];
+		arraylist2 = new short[numcells2];
+		
+		file.seek(page0);
+		file.readByte();
+		file.readByte();
+		file.readShort();
+		for(int i = 0; i < numcells1 - 1; i++)
+			file.readShort();
+		file.seek(file.readShort() + page0);
+		file.readShort();
+		splitkey = file.readInt();
+		
+		for(int i = 0; i < numcells; i++)					//calculating and storing the offset of start of addresses for each page
+		{
+			file.seek(arraypointer + 2*i);
+			if(i < numcells1)							//this cell will be going into the first
+			{
+				arraylist1[i] = file.readShort();
+				file.seek(page0 + arraylist1[i]);
+				arraylist1[i] = file.readShort();		//store the payload of each cell
+				startoffset1 = (short) (startoffset1 - (arraylist1[i] + 6)); 		//The start of the first record will be pushed back from the end by the payload + 6
+				records1[i] = new byte[arraylist1[i] + 6];
+				file.seek(file.getFilePointer() - 2);
+				file.readFully(records1[i]);
+			}else										//this cell will be going into the second
+			{
+				arraylist2[i-numcells1] = file.readShort();
+				file.seek(page0 + arraylist2[i-numcells1]);
+				arraylist2[i-numcells1] = file.readShort();		//store the payload of each cell
+				startoffset2 = (short) (startoffset2 - (arraylist2[i-numcells1] + 6)); 		//The start of the first record will be pushed back from the end by the payload + 6
+				records2[i-numcells1] = new byte[arraylist2[i-numcells1] + 6];
+				file.seek(file.getFilePointer() - 2);
+				file.readFully(records2[i-numcells1]);
+			}
 		}
 		
-		}
-		catch(Exception e2)
+		file.seek(page0 + (pageSize-1));
+		nextinlist = file.readByte();
+		
+		startoffset1--;
+		startoffset2--;		
+		
+		if(parentPointer == -1)		//This is the first split. We are on page 0
 		{
-			System.out.println(e2);
+			file.setLength(3*pageSize);
+			file.seek(pageSize);
+			file.writeByte(0x0d);				//page is now a leaf node
+			file.writeByte(numcells1);			//this is the first new page
+			file.writeShort(startoffset1);		//write the start of offset for page 1
+			file.writeShort(startoffset1);
+			arraylist1[0] = (short) (arraylist1[0] + startoffset1+6);
+			file.writeShort(arraylist1[0]);
+			for(int i = 1; i < numcells1 - 1; i++)
+			{
+				arraylist1[i] = (short) (arraylist1[i] + arraylist1[i-1] + 6);
+				file.writeShort(arraylist1[i]);
+			}
+			
+			arraypointer1 = pageSize + 4;
+			
+			for(int i = 0; i < numcells1; i++)
+			{
+				file.seek(arraypointer1 + i*2);
+				file.seek(file.readShort() + pageSize);
+				file.write(records1[i]);
+			}
+			
+			file.writeByte(0x02);
+			
+			file.seek(2*pageSize);
+			file.writeByte(0x0d);				//page is now a leaf node
+			file.writeByte(numcells2);			//this is the first new page
+			file.writeShort(startoffset2);		//write the start of offset for page 1
+			file.writeShort(startoffset2);
+			arraylist2[0] = (short) (arraylist2[0] + startoffset2+6);
+			file.writeShort(arraylist2[0]);
+			for(int i = 1; i < numcells2 - 1; i++)
+			{
+				arraylist2[i] = (short) (arraylist2[i] + arraylist2[i-1] + 6);
+				file.writeShort(arraylist2[i]);
+			}
+			
+			arraypointer2 = 2*pageSize + 4;
+			
+			for(int i = 0; i < numcells2; i++)
+			{
+				file.seek(arraypointer2 + i*2);
+				file.seek(file.readShort() + 2*pageSize);
+				file.write(records2[i]);
+			}
+			
+			file.writeByte(0x00);
+			
+			file.seek(0);
+			file.writeByte(0x05);
+			file.writeByte(0x01);
+			file.writeShort((int) (pageSize - 8));
+			file.writeInt(2);
+			file.writeShort((int) (pageSize - 8));
+			file.seek(pageSize - 8);
+			file.writeInt(1);
+			file.writeInt(splitkey);
+			
 		}
+		else						//This is not the first split and we can proceed
+		{			
+			file.setLength(file.length() + pageSize);		//add another page
+			page1 = file.length() - pageSize;
+			file.seek(page1);				//go to the new page
+			file.writeByte(0x0d);			//its a leaf page
+			file.writeByte(numcells2);		//number of cells in page 2
+			file.writeShort(startoffset2);	//set the offset of page 2
+			file.writeShort(startoffset2);	//smallest cell offset
+			arraylist2[0] = (short) (arraylist2[0] + startoffset2+6);	//increase the offset
+			file.writeShort(arraylist2[0]);
+			for(int i = 1; i < numcells2 - 1; i++)
+			{
+				arraylist2[i] = (short) (arraylist2[i] + arraylist2[i-1] + 6);
+				file.writeShort(arraylist2[i]);
+			}
+			
+			arraypointer2 = page1 + 4;
+			
+			for(int i = 0; i < numcells2; i++)
+			{
+				file.seek(arraypointer2 + i*2);
+				file.seek(file.readShort() + page1);
+				file.write(records2[i]);
+			}
+			
+			file.writeByte(nextinlist);		//NEEDS TO POINT TO page0 OLD NEXT PAGE
+			
+			file.seek(page0);
+			file.writeByte(0x0d);				//page is now a leaf node
+			file.writeByte(numcells1);			//this is the first new page
+			file.writeShort(startoffset1);		//write the start of offset for page 1
+			file.writeShort(startoffset1);
+			arraylist1[0] = (short) (arraylist1[0] + startoffset1+6);
+			file.writeShort(arraylist1[0]);
+			for(int i = 1; i < numcells1 - 1; i++)
+			{
+				arraylist1[i] = (short) (arraylist1[i] + arraylist1[i-1] + 6);
+				file.writeShort(arraylist1[i]);
+			}
+			
+			arraypointer1 = page0 + 4;
+			
+			for(int i = 0; i < numcells1; i++)
+			{
+				file.seek(arraypointer1 + i*2);
+				file.seek(file.readShort() + page0);
+				file.write(records1[i]);
+			}
+			
+			file.writeByte((byte)(page1/pageSize));
+			
+			SENDTOPARENT(file,parentPointer, page0,splitkey,page1);
+						
 		}
-		else
-			System.out.println("The table: \"" + table + "\" could not be found.");
-		*/
+		
+	}
+	
+	public static void SENDTOPARENT(RandomAccessFile file, long parentpointer, long page0, int key, long page1) throws IOException
+	{		
+		boolean	done = false;
+		byte	numcells = 0;
+		short	offset = 0;
+		int 	rightmost = 0, tmpkey1 = 0, tmppage1 = 0;
+		
+		file.seek(parentpointer);		//start at the parent
+		file.readByte();				//skip page type
+		numcells = file.readByte();		//get numcells
+		offset = file.readShort();		//get offset
+		
+		if((10 + 8 * (numcells + 1) > pageSize))
+				//parentpointer = SPLITPARENT(file, parentpointer, key);		//needs to return the long pointer to the page the key needs to go on
+		
+		file.seek(parentpointer);								//start of page
+		file.readByte();										//ignore type
+		numcells = file.readByte();								//get numcells
+		file.seek(file.getFilePointer() - 1);
+		numcells++;
+		file.writeByte(numcells);								//increament numcells
+		offset = file.readShort();								//get offset
+		file.seek(file.getFilePointer() - 2);
+		offset = (short) (offset - 8);
+		file.writeShort(offset);
+		rightmost = file.readInt();								//get rightmost
+		file.writeShort(offset);
+		file.seek(offset + parentpointer + 8);					//go to the start of the array
+				
+		for(int i = 0; i < numcells && !done; i++)
+		{
+			tmppage1 = file.readInt();
+			tmpkey1 = file.readInt();
+			
+			file.seek(file.getFilePointer() - 16);
+			file.writeInt(tmppage1);
+			if(tmpkey1 > key)
+			{
+				file.writeInt(key);
+				file.writeInt((int) (page1/pageSize));
+				done = true;
+			}
+			else
+			{
+				file.writeInt(tmpkey1);
+				file.readInt();
+				file.readInt();
+			}
+		}
+		
+		if(!done)
+		{
+			file.seek(parentpointer + pageSize - 8);
+			file.writeInt(rightmost);
+			file.writeInt(key);
+			file.seek(parentpointer + 4);
+			file.writeInt((int) (page1/pageSize));
+		}
+		
+	}
+	
+	public static long FINDPARENT(RandomAccessFile file, int key, long start) throws IOException	//Return the address of the parent of the node at pointer
+	{		
+		byte	numcells = 0;
+		int		largestpage = 0, tmppage = 0, tmpkey = 0;
+		
+		file.seek(start);			//seek to the start of the page we are starting on
+		
+		if(file.readByte() == 0x0d)	//we were given a page that is a leaf to start
+			return -1;
+		
+		numcells = file.readByte();
+		file.readShort();
+		largestpage = file.readInt();
+		file.getFilePointer();
+		
+		for(int i = 0; i < numcells; i++)
+		{
+			file.seek(file.readShort() + start);	//go to the start of the list
+			tmppage = file.readInt();				//store the page # of key <= to...
+			tmpkey = file.readInt();				//this key
+			if(key <= tmpkey)						//if the key we are looking for is less than or equal to the tmpkey (we found the page we want)
+				{
+					file.seek(tmppage*pageSize);	//seek to the page
+					if(file.readByte() == 0x0d)		//if it is a leaf node it has to be the one we are looking for
+						return start;
+					else							//if it is an interior node then we need to keep looking on the interior node
+						return FINDPARENT(file,key,tmppage*pageSize);
+				}		
+		}
+		
+		//if we make it here that means the key is > than the largest key stored in this interior node
+		//so we have to check the node at the address of the largest key
+		
+		file.seek(largestpage*pageSize);			//go to that largest page
+		if(file.readByte() == 0x0d)					//we found the leaf we were looking for
+			return start;
+		else										//we found another interior node
+			return FINDPARENT(file,key,largestpage*pageSize);
+	}
+	
+	public static int GETNUMCOLUMNS(String table) throws IOException
+	{
+		RandomAccessFile File = new RandomAccessFile("data\\greenwaldbase_columns.tbl","r");
+				
+		int pagepointer = 0, numcells, pointer, numcols = 0;
+		
+		String tmptable = "";
+		
+		long leftmost = FINDLEFTMOSTPAGE(File, 0), arraypointer;
+		
+		pagepointer = (int) (leftmost/pageSize);
+				
+		do
+		{
+			File.seek(pagepointer * pageSize);
+			File.readByte();						//throw away the page type
+			numcells = File.readByte();				//get num cells
+			File.readShort();						//Jump over start of data address
+			arraypointer = (File.getFilePointer());
+			pointer = (int) ((pagepointer*pageSize) + File.readShort());		//get address of first record
+					
+			for(int i = 0; i < numcells; i++)
+			{				
+				tmptable = "";
+				
+				File.seek(pointer);
+
+				File.readShort();	//Skip over payload
+				File.readInt();		//Skip over rowid
+				File.readByte();	//Skip over num cols
+				File.readByte();	//Skip over datatype for tablename
+				File.readByte();	//Skip over datatype for colname
+				File.readByte();	//Skip over datatype for datatype
+				File.readByte();	//Skip over datatype for ordpos
+				File.readByte();	//Skip over datatype for isnull
+								
+				tmptable = File.readUTF();	//Get the table string
+				File.readUTF();		//Skip the column_name
+				File.readUTF();		//Get data_type
+				File.readByte();	//Get the ordinal position
+												
+				if(tmptable.equals(table))				//If its the correct table
+				{
+					numcols++;
+				}
+
+				File.seek(arraypointer + 2);	//find next address on list
+				arraypointer = File.getFilePointer();
+				pointer = (int) ((pagepointer*pageSize) + File.readShort());				//get address
+				
+			}
+			
+			File.seek(pagepointer * pageSize - 1 + pageSize);		//Find next page in the line
+			
+			pagepointer = File.readByte();				//store that page
+							
+		}
+		while (pagepointer != 0);
+		
+		return numcols;
 	}
 	
 	public static void UPDATE(String usrCom)
 	{
+		try{
+			
+		String 	table, where, change, tmp;
+		byte	numcells, tmpByte = 0;
+		byte[] 	types;
+		int 	rowid, ord, tmpint = -1, numcols;
+		long	pagepointer = 0, arraypointer = 0, typepointer = 0, nullLong = 0;
+		short	pointer = 0;
 		
+		table = usrCom.substring(6, usrCom.toUpperCase().indexOf("SET")).trim();
+		
+		where = usrCom.substring(usrCom.toUpperCase().indexOf("SET") + 4, usrCom.indexOf("=", usrCom.toUpperCase().indexOf("=" , usrCom.toUpperCase().indexOf("SET") + 4))).trim();
+		
+		tmp = usrCom.substring(usrCom.toUpperCase().indexOf("ROWID")+ 6).trim();
+		
+		tmp = tmp.replace("=", "").replace(";", "").trim();
+		
+		change = usrCom.substring(usrCom.indexOf("=") + 1, usrCom.toUpperCase().indexOf("WHERE") - 1).replace("\"", "").trim();
+		
+		rowid = Integer.parseInt(tmp);
+				
+		if (rowid <= 0)
+		{
+			System.out.println("rowid must be > 0...");
+			return;
+		}
+		
+		if(change.toUpperCase().contains("NULL"))
+		{
+			change = change.toUpperCase();
+			
+			if(!ISNULLABLE(table,where))
+			{
+				System.out.println("This value is NOT nullable.");
+				return;
+			}
+		}
+		
+		
+		RandomAccessFile F = new RandomAccessFile("data\\" + table + ".tbl", "rw");
+		
+		ord = GETORDINALITY(table, where);
+		
+		pagepointer = FINDKEYPAGE(F, rowid, 0);
+		
+		F.seek(pagepointer);
+		F.readByte();
+		numcells = F.readByte();
+		F.readShort();
+		arraypointer = F.getFilePointer();
+		
+		for(int i = 0; i < numcells && tmpint != rowid;i++)
+		{
+			pointer = F.readShort();
+			F.seek(pointer + pageSize * pagepointer);
+			F.readShort();
+			tmpint = F.readInt();
+			arraypointer += 2;
+			if(tmpint != rowid)
+				F.seek(arraypointer);
+		}
+		
+		if(tmpint != rowid && rowid > 0)
+			System.out.println("ERROR: Could not find rowid = " + rowid);
+		else
+		{
+			numcols = F.readByte();
+			
+			types = new byte[numcols];
+			
+			for(int i = 0; i < numcols; i++)
+			{
+				if(ord == i+2)							//if the type we are about to read is the ord we want to update
+					typepointer = F.getFilePointer();	//save that address for later
+				types[i] = F.readByte();				//get the type
+			}
+			
+			SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'_'HH:mm:ss");
+			SimpleDateFormat sdf2 = new SimpleDateFormat("yyyy-MM-dd");
+			Date d;
+			
+			for(int j = 0; j < ord - 1; j++)
+			{
+				switch(types[j])
+				{
+				case 0:		//1 byte Null
+					if(ord == j+2 && change.toUpperCase().equals("NULL"))			//if we find the ord and we are changing null to null
+					{
+						F.readByte();												//Skip the byte
+						System.out.println("Changed a Null to a Null");				//Say we didnt change anything
+					}else if(ord == j+2 && !change.toUpperCase().equals("NULL"))	//If we are at the ord and changing null to tinyint
+					{
+						nullLong = F.getFilePointer();								//save the pointer
+						F.seek(typepointer);										//seek back to the type
+						F.writeByte(0x04);											//change type to tinyint
+						F.seek(nullLong);											//go back to pointer where tinyint is stored
+						F.writeByte(Byte.parseByte(change));						//write the tinyint
+						System.out.println("Changed a Null to : " + change);		//say we changed the null to a tinyint
+					} else
+						F.readByte();												//we are not at the right ordinal so keep going
+					break;
+				case 1:		//2 byte Null
+					if(ord == j+2 && change.toUpperCase().equals("NULL"))
+					{
+						F.readShort();
+						System.out.println("Changed a Null to a Null");
+					}else if(ord == j+2 && !change.toUpperCase().equals("NULL"))
+					{
+						nullLong = F.getFilePointer();
+						F.seek(typepointer);
+						F.writeByte(0x05);
+						F.seek(nullLong);
+						F.writeShort(Short.parseShort(change));
+						System.out.println("Changed a Null to : " + change);
+					} else
+						F.readShort();
+					break;
+				case 2:		//4 byte Null
+					if(ord == j+2 && change.toUpperCase().equals("NULL"))			//changing a null to a null
+					{
+						F.readInt();
+						System.out.println("Changed a Null to a Null");
+					}else if(ord == j+2 && !change.toUpperCase().equals("NULL"))
+					{
+						nullLong = F.getFilePointer();								//save the location
+						F.seek(typepointer);										//go to the type storage
+						tmpByte = GETTYPEBYTE(GETDATATYPE(table,ord));				//Find what type we are updating to
+						F.writeByte(tmpByte);										//write that type to the type storage
+						F.seek(nullLong);											//go back to the info address
+						if(tmpByte == 0x06)											//if it is an INT
+							F.writeInt(Integer.parseInt(change));					//write it as an INT
+						else
+							F.writeFloat(Float.parseFloat(change));					//if not an INT it has to be a FLOAT
+						System.out.println("Changed a Null to : " + change);
+					} else
+						F.readInt();
+					break;
+				case 3:		//8 byte Null
+					if(ord == j+2 && change.toUpperCase().equals("NULL"))			//changing a null to a null
+					{
+						F.readLong();
+						System.out.println("Changed a Null to a Null");
+					}else if(ord == j+2 && !change.toUpperCase().equals("NULL"))
+					{
+						nullLong = F.getFilePointer();								//save the location
+						F.seek(typepointer);										//go to the type storage
+						tmpByte = GETTYPEBYTE(GETDATATYPE(table,ord));				//Find what type we are updating to
+						F.writeByte(tmpByte);										//write that type to the type storage
+						F.seek(nullLong);											//go back to the info address
+						if(tmpByte == 0x07)											//if it is a BIGINT
+							F.writeLong(Long.parseLong(change));					//write it as an BIGINT
+						else if (tmpByte == 0x09)									//if it is a double
+							F.writeDouble(Double.parseDouble(change));				//write it as a double
+						else if (tmpByte == 0x0A)									//if it is a DATETIME
+						{
+							d = new Date();											//Clear up the date
+							d = sdf.parse(where);									//parse the string into the date
+							F.writeLong(d.getTime());								//write the long from the date
+						} else														//if not BIGINT,DOUBLE, or DATETIME it has to be a DATE
+						{
+							d = new Date();											//Clear up the date
+							d = sdf2.parse(where);									//parse the string into the date
+							F.writeLong(d.getTime());								//write the long from the date
+						}
+						System.out.println("Changed a Null to : " + change);
+					} else
+						F.readLong();
+				case 4:
+					if(ord == j+2 && !change.toUpperCase().equals("NULL"))			//if we find the ord and we are changing not null to not null
+					{
+						F.writeByte(Byte.parseByte(change));
+						System.out.println("Changed a TINYINT to: " + change);				
+					}else if(ord == j+2 && change.toUpperCase().equals("NULL"))		//If we are at the ord and changing tinyint to a null
+					{
+						nullLong = F.getFilePointer();								//save the pointer
+						F.seek(typepointer);										//seek back to the type
+						F.writeByte(0x00);											//change type to null
+						F.seek(nullLong);											//go back to pointer where tinyint is stored
+						F.writeByte(0x00);											//overwrite the old tinyint
+						System.out.println("Changed a TINYINT to : " + change);		//say we changed the null to a tinyint
+					} else
+						F.readByte();												//we are not at the right ordinal so keep going
+					break;
+				case 5:
+					if(ord == j+2 && !change.toUpperCase().equals("NULL"))			//if we find the ord and we are changing not null to not null
+					{
+						F.writeShort(Short.parseShort(change));
+						System.out.println("Changed a SMALLINT to: " + change);				
+					}else if(ord == j+2 && change.toUpperCase().equals("NULL"))		//If we are at the ord and changing SMALLINT to a null
+					{
+						nullLong = F.getFilePointer();								//save the pointer
+						F.seek(typepointer);										//seek back to the type
+						F.writeByte(0x01);											//change type to null
+						F.seek(nullLong);											//go back to pointer where smallint is stored
+						F.writeShort(0x00);											//overwrite the old smallint
+						System.out.println("Changed a SMALLINT to : " + change);	//say we changed the smallint to a null
+					} else
+						F.readShort();												//we are not at the right ordinal so keep going
+					break;
+				case 6:
+					if(ord == j+2 && !change.toUpperCase().equals("NULL"))			//if we find the ord and we are changing not null to not null
+					{
+						F.writeInt(Integer.parseInt(change));
+						System.out.println("Changed an INT to: " + change);				
+					}else if(ord == j+2 && change.toUpperCase().equals("NULL"))		//If we are at the ord and changing INT to a null
+					{
+						nullLong = F.getFilePointer();								//save the pointer
+						F.seek(typepointer);										//seek back to the type
+						F.writeByte(0x02);											//change type to null
+						F.seek(nullLong);											//go back to pointer where int is stored
+						F.writeInt(0x00);											//overwrite the old int
+						System.out.println("Changed an INT to : " + change);		//say we changed the int to a null
+					} else
+						F.readInt();												//we are not at the right ordinal so keep going
+					break;
+				case 7:
+					if(ord == j+2 && !change.toUpperCase().equals("NULL"))			//if we find the ord and we are changing not null to not null
+					{
+						F.writeLong(Long.parseLong(change));
+						System.out.println("Changed a BIGINT to: " + change);				
+					}else if(ord == j+2 && change.toUpperCase().equals("NULL"))		//If we are at the ord and changing BIGINT to a null
+					{
+						nullLong = F.getFilePointer();								//save the pointer
+						F.seek(typepointer);										//seek back to the type
+						F.writeByte(0x03);											//change type to null
+						F.seek(nullLong);											//go back to pointer where long is stored
+						F.writeLong(0x00);											//overwrite the old long
+						System.out.println("Changed a BIGINT to : " + change);		//say we changed the long to a null
+					} else
+						F.readLong();												//we are not at the right ordinal so keep going
+					break;
+				case 8:
+					if(ord == j+2 && !change.toUpperCase().equals("NULL"))			//if we find the ord and we are changing not null to not null
+					{
+						F.writeFloat(Float.parseFloat(change));
+						System.out.println("Changed a REAL to: " + change);				
+					}else if(ord == j+2 && change.toUpperCase().equals("NULL"))		//If we are at the ord and changing Float to a null
+					{
+						nullLong = F.getFilePointer();								//save the pointer
+						F.seek(typepointer);										//seek back to the type
+						F.writeByte(0x02);											//change type to null
+						F.seek(nullLong);											//go back to pointer where float is stored
+						F.writeFloat(0x00);											//overwrite the old float
+						System.out.println("Changed a REAL to : " + change);		//say we changed the float to a null
+					} else
+						F.readFloat();												//we are not at the right ordinal so keep going
+					break;
+				case 9:
+					if(ord == j+2 && !change.toUpperCase().equals("NULL"))			//if we find the ord and we are changing not null to not null
+					{
+						F.writeDouble(Double.parseDouble(change));
+						System.out.println("Changed a DOUBLE to: " + change);				
+					}else if(ord == j+2 && change.toUpperCase().equals("NULL"))		//If we are at the ord and changing DOUBLE to a null
+					{
+						nullLong = F.getFilePointer();								//save the pointer
+						F.seek(typepointer);										//seek back to the type
+						F.writeByte(0x03);											//change type to null
+						F.seek(nullLong);											//go back to pointer where DOUBLE is stored
+						F.writeDouble(0x00);										//overwrite the old DOUBLE
+						System.out.println("Changed a DOUBLE to : " + change);		//say we changed the DOUBLE to a null
+					} else
+						F.readDouble();												//we are not at the right ordinal so keep going
+					break;
+				case 10:
+					if(ord == j+2 && !change.toUpperCase().equals("NULL"))			//if we find the ord and we are changing not null to not null
+					{
+						d = new Date();												//Clear up the date
+						d = sdf.parse(where);										//parse the string into the date
+						F.writeLong(d.getTime());									//write the long from the date
+						System.out.println("Changed a DATETIME to: " + change);
+					}else if(ord == j+2 && change.toUpperCase().equals("NULL"))		//If we are at the ord and changing DATETIME to a null
+					{
+						nullLong = F.getFilePointer();								//save the pointer
+						F.seek(typepointer);										//seek back to the type
+						F.writeByte(0x03);											//change type to null
+						F.seek(nullLong);											//go back to pointer where DOUBLE is stored
+						F.writeLong(0x00);											//overwrite the old DOUBLE
+						System.out.println("Changed a DATETIME to : " + change);		//say we changed the DOUBLE to a null
+					}else
+						F.readLong();
+					break;
+				case 11:
+					if(ord == j+2 && !change.toUpperCase().equals("NULL"))			//if we find the ord and we are changing not null to not null
+					{
+						d = new Date();												//Clear up the date
+						d = sdf2.parse(where);										//parse the string into the date
+						F.writeLong(d.getTime());									//write the long from the date
+						System.out.println("Changed a DATE to: " + change);
+					}else if(ord == j+2 && change.toUpperCase().equals("NULL"))		//If we are at the ord and changing DATETIME to a null
+					{
+						nullLong = F.getFilePointer();								//save the pointer
+						F.seek(typepointer);										//seek back to the type
+						F.writeByte(0x03);											//change type to null
+						F.seek(nullLong);											//go back to pointer where DOUBLE is stored
+						F.writeLong(0x00);											//overwrite the old DOUBLE
+						System.out.println("Changed a DATE to : " + change);		//say we changed the DOUBLE to a null
+					}else
+						F.readLong();
+					break;
+				default:
+					if(ord == j +2)													//if we find the ord
+					{
+						F.writeUTF(change);
+						System.out.println("Changed a TEXT to: " + change);
+					}
+					else
+						F.readUTF();
+					break;
+					
+				}
+			}
+			
+			F.close();
+		}
+		}
+		catch(Exception e7)
+		{
+			System.out.println("Got exception in UPDATE");
+			e7.printStackTrace();
+		}
+	}
+	
+	public static byte GETTYPEBYTE(String str)	//takes a string and converts it to the byte needed to be written in a record
+	{
+		byte B = -1;
+		
+		str = str.toUpperCase();
+		switch(str)
+		{
+			case "INT":
+				B = 0x06;
+				break;
+			case "BIGINT":
+				B = 0x07;
+				break;
+			case "REAL":
+				B = 0x08;
+				break;
+			case "DOUBLE":
+				B = 0x09;
+				break;
+			case "DATETIME":
+				B = 0x0A;
+				break;
+			case "DATE":
+				B = 0x0B;
+				break;
+		}
+		
+		return B;
 	}
 	
 	public static void SELECT_FROM_WHERE(String usrCom)
 	{
 		{			
 			usrCom = usrCom.replace(";", "");
-			
-			String usrComlower = usrCom.toLowerCase();
-			
-			String[] select, types = {""};
+						
+			String[] select;
 			String table, where, print = "";
 			
 			select = usrCom.substring(7, usrCom.toUpperCase().indexOf("FROM")-1).split(",");
@@ -440,7 +1371,7 @@ public class GreenwaldBase {
 					
 					RandomAccessFile File = new RandomAccessFile("data\\" + table + ".tbl","rw");
 					
-					int numcols, numcells = 0;
+					int numcells = 0;
 					long leftmost,arraypointer = 0, pointer = 0;
 					byte pointer2 = 0;
 					
@@ -718,7 +1649,7 @@ public class GreenwaldBase {
 	
 	public static void DELETE_FROM_WHERE(String usrCom)
 	{
-		System.out.println("Need to write DELETE_FROM_WHERE");
+		//System.out.println("Need to write DELETE_FROM_WHERE");
 	}
 	
 	public static void Create_greenwaldbase_tables()
@@ -913,6 +1844,7 @@ public class GreenwaldBase {
 				System.out.println(e5);
 			}
 	}
+	
 	public static long FINDLEFTMOSTPAGE(RandomAccessFile file, long pos) throws IOException //returns the #bytes ofset from beginning of file of the leftmost page
 	{
 		file.seek(pos);
@@ -937,7 +1869,7 @@ public class GreenwaldBase {
 		RandomAccessFile File = new RandomAccessFile("data\\greenwaldbase_columns.tbl", "r");
 		
 		byte tmpByte = 0;
-		int pagepointer = 0, numcells, pointer, tmpInt = 0;
+		int pagepointer = 0, numcells, pointer;
 		
 		String tmptable = "", tmpString = "";
 		
@@ -957,7 +1889,6 @@ public class GreenwaldBase {
 			for(int i = 0; i < numcells; i++)
 			{				
 				tmptable = "";
-				tmpInt = 0;
 				
 				File.seek(pointer);
 
@@ -994,6 +1925,78 @@ public class GreenwaldBase {
 		while (pagepointer != 0);
 		
 		return "ERROR";
+	}
+	
+	public static boolean ISNULLABLE(String table, String column) throws IOException
+	{
+		RandomAccessFile File = new RandomAccessFile("data\\greenwaldbase_columns.tbl", "r");
+		
+		//byte tmpByte = 0;
+		int pagepointer = 0, numcells, pointer;
+		
+		String tmptable = "", tmpIs = "", tmpColname = "";
+		
+		long leftmost = FINDLEFTMOSTPAGE(File, 0), arraypointer;
+		
+		pagepointer = (int) (leftmost/pageSize);
+				
+		do
+		{
+			File.seek(pagepointer * pageSize);
+			File.readByte();						//throw away the page type
+			numcells = File.readByte();				//get num cells
+			File.readShort();						//Jump over start of data address
+			arraypointer = (File.getFilePointer());
+			pointer = (int) ((pagepointer*pageSize) + File.readShort());		//get address of first record
+					
+			for(int i = 0; i < numcells; i++)
+			{				
+				tmptable = "";
+				tmpIs = "";
+				tmpColname = "";
+				
+				File.seek(pointer);
+
+				File.readShort();	//Skip over payload
+				File.readInt();		//Skip over rowid
+				File.readByte();	//Skip over num cols
+				File.readByte();	//Skip over datatype for tablename
+				File.readByte();	//Skip over datatype for colname
+				File.readByte();	//Skip over datatype for datatype
+				File.readByte();	//Skip over datatype for ordpos
+				File.readByte();	//Skip over datatype for isnull
+								
+				tmptable = File.readUTF();	//Get the table string
+				tmpColname = File.readUTF();//Get the column_name
+				File.readUTF();				//Skip data_type
+				File.readByte();			//Skip the ordinal position
+				tmpIs = File.readUTF();		//Get is_nullable
+												
+				if(tmptable.equals(table) && tmpColname.equals(column) && tmpIs.equals("YES"))
+				{
+					File.close();
+					return true;
+				}
+				else if (tmptable.equals(table) && tmpColname.equals(column) && tmpIs.equals("NO"))
+				{
+					File.close();
+					return false;
+				}
+
+				File.seek(arraypointer + 2);	//find next address on list
+				arraypointer = File.getFilePointer();
+				pointer = (int) ((pagepointer*pageSize) + File.readShort());				//get address
+				
+			}
+			
+			File.seek(pagepointer * pageSize - 1 + pageSize);		//Find next page in the line
+			
+			pagepointer = File.readByte();				//store that page
+							
+		}
+		while (pagepointer != 0);
+		
+		return false;
 	}
 	
 	public static int GETORDINALITY(String table, String colname) throws IOException //WORKS! returns the cardinality of the colname in table
@@ -1214,7 +2217,7 @@ public class GreenwaldBase {
 		
 		Arrays.sort(ordinals);
 		
-		String print = "", tmpstring = "";
+		String tmpstring = "";
 		
 		file.seek(pointer);						//Go to start of record
 		short payload = file.readShort();		//Store payload
@@ -1398,7 +2401,7 @@ public class GreenwaldBase {
 		RandomAccessFile File = new RandomAccessFile ("data\\greenwaldbase_columns.tbl" , "r");
 		
 		leftmost = FINDLEFTMOSTPAGE(File, 0);		//Find the leftmost page address
-		
+				
 		pointer2 = (byte) (leftmost/pageSize);		// pointer2 is leftmost page #
 
 		do
@@ -1421,16 +2424,16 @@ public class GreenwaldBase {
 		}
 		
 		
-		
+		File.seek(pageSize*pointer2 +(pageSize-1));
 		pointer2 = File.readByte();
 		}while(pointer2 != 0);
-		
+
 		tmpString = tmpString.substring(0, tmpString.length()-1);
 		
 		ret = tmpString.split(",");
 		
 		for(int i = 0; i < ret.length; i++)
-			ret[i]=ret[i].trim();	
+			ret[i]=ret[i].trim();
 		
 		return ret;
 	}
@@ -1471,7 +2474,130 @@ public class GreenwaldBase {
 		}
 	}
 	
+	public static boolean KEYEXISTS(String table, int key) throws IOException
+	{
+		RandomAccessFile File = new RandomAccessFile("data\\" + table + ".tbl","r");
+		
+		int pagepointer = 0, numcells, pointer;
+				
+		long leftmost = FINDLEFTMOSTPAGE(File, 0), arraypointer;
+		
+		pagepointer = (int) (leftmost/pageSize);
+				
+		do
+		{
+			File.seek(pagepointer * pageSize);
+			File.readByte();						//throw away the page type
+			numcells = File.readByte();				//get num cells
+			File.readShort();						//Jump over start of data address
+			arraypointer = (File.getFilePointer());
+			pointer = (int) ((pagepointer*pageSize) + File.readShort());		//get address of first record
+					
+			for(int i = 0; i < numcells; i++)
+			{								
+				File.seek(pointer);
+
+				File.readShort();	//Skip over payload
+				if(File.readInt() == key)		//Skip over rowid
+				{
+					File.close();
+					return true;
+				}
+												
+				
+
+				File.seek(arraypointer + 2);	//find next address on list
+				arraypointer = File.getFilePointer();
+				pointer = (int) ((pagepointer*pageSize) + File.readShort());				//get address
+				
+			}
+			
+			File.seek(pagepointer * pageSize - 1 + pageSize);		//Find next page in the line
+			
+			pagepointer = File.readByte();				//store that page
+							
+		}
+		while (pagepointer != 0);
+		
+		File.close();
+		return false;
+	}
+	
+	public static boolean ISNULLABLE(String table, int ord) throws IOException		//table and ord of column returns true is nullable false if not
+	{
+		RandomAccessFile File = new RandomAccessFile("data\\greenwaldbase_columns.tbl", "r");
+		
+		byte tmpByte = 0;
+		int pagepointer = 0, numcells, pointer;
+		
+		String tmptable = "", tmpIs = "";
+		
+		long leftmost = FINDLEFTMOSTPAGE(File, 0), arraypointer;
+		
+		pagepointer = (int) (leftmost/pageSize);
+				
+		do
+		{
+			File.seek(pagepointer * pageSize);
+			File.readByte();						//throw away the page type
+			numcells = File.readByte();				//get num cells
+			File.readShort();						//Jump over start of data address
+			arraypointer = (File.getFilePointer());
+			pointer = (int) ((pagepointer*pageSize) + File.readShort());		//get address of first record
+					
+			for(int i = 0; i < numcells; i++)
+			{				
+				tmptable = "";
+				tmpIs = "";
+				
+				File.seek(pointer);
+
+				File.readShort();	//Skip over payload
+				File.readInt();		//Skip over rowid
+				File.readByte();	//Skip over num cols
+				File.readByte();	//Skip over datatype for tablename
+				File.readByte();	//Skip over datatype for colname
+				File.readByte();	//Skip over datatype for datatype
+				File.readByte();	//Skip over datatype for ordpos
+				File.readByte();	//Skip over datatype for isnull
+								
+				tmptable = File.readUTF();	//Get the table string
+				File.readUTF();				//Get the column_name
+				File.readUTF();				//Skip data_type
+				tmpByte = File.readByte();	//Skip the ordinal position
+				tmpIs = File.readUTF();		//Get is_nullable
+												
+				if(tmptable.equals(table) && tmpByte == ord && tmpIs.equals("YES"))
+				{
+					File.close();
+					return true;
+				}
+				else if (tmptable.equals(table) && tmpByte == ord && tmpIs.equals("NO"))
+				{
+					File.close();
+					return false;
+				}
+
+				File.seek(arraypointer + 2);	//find next address on list
+				arraypointer = File.getFilePointer();
+				pointer = (int) ((pagepointer*pageSize) + File.readShort());				//get address
+				
+			}
+			
+			File.seek(pagepointer * pageSize - 1 + pageSize);		//Find next page in the line
+			
+			pagepointer = File.readByte();				//store that page
+							
+		}
+		while (pagepointer != 0);
+		
+		File.close();		
+		return false;
+	}
+	
 }
+
+
 
 
 
